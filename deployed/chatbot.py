@@ -309,7 +309,12 @@ with st.sidebar:
                 S.rename_id = i; S.rename_value = c.get("title","New Chat")
         with col_right:
             if st.button("Delete", key=f"del_{i}", use_container_width=True):
-                S.confirm_delete_id = i
+                # Immediately remove the conversation and update current selection
+                if i in S.conversations:
+                    S.conversations.pop(i, None)
+                    S.cur = next(iter(S.conversations), None)
+                    _save(S.conversations)
+                    st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
