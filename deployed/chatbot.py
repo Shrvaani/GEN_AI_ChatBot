@@ -316,6 +316,19 @@ with st.sidebar:
                     _save(S.conversations)
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
+        # inline rename UI
+        if S.rename_id == i:
+            new_title = st.text_input("Rename conversation", value=S.rename_value, key=f"ren_input_{i}")
+            rcol1, rcol2 = st.columns(2)
+            if rcol1.button("Save", key=f"ren_save_{i}"):
+                title = (new_title or "").strip() or c.get("title","New Chat")
+                S.conversations[i]["title"] = title
+                _save(S.conversations)
+                S.rename_id = None; S.rename_value = ""
+                st.rerun()
+            if rcol2.button("Cancel", key=f"ren_cancel_{i}"):
+                S.rename_id = None; S.rename_value = ""
+                st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
