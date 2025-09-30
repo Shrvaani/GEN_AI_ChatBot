@@ -62,17 +62,18 @@ CSS = """
     /* Main content area */
     .stApp[data-theme="dark"] .main .block-container {
         background-color: var(--background-color) !important;
+        padding: 0 !important;
     }
     
     /* Main header */
     .main-header {
         background: var(--primary-gradient) !important;
-        padding: 1.2rem 1.5rem !important;
-        border-radius: 8px !important;
-        margin-bottom: 1rem !important;
+        padding: 1rem 1.2rem !important;
+        border-radius: 6px !important;
+        margin-bottom: 0.5rem !important;
         color: white !important;
         text-align: center !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1) !important;
         display: flex !important;
         flex-direction: column !important;
         justify-content: center !important;
@@ -81,30 +82,30 @@ CSS = """
     
     .main-header h1 {
         margin: 0 !important;
-        font-size: 1.8rem !important;
+        font-size: 1.6rem !important;
         font-weight: 600 !important;
         line-height: 1.2 !important;
     }
     
     .main-header p {
-        margin: 0.2rem 0 0 0 !important;
-        font-size: 0.9rem !important;
+        margin: 0.1rem 0 0 0 !important;
+        font-size: 0.8rem !important;
         opacity: 0.9 !important;
-        line-height: 1.2 !important;
+        line-height: 1.1 !important;
     }
     
     /* Session card */
     .session-card {
         background: var(--card-background);
-        padding: 1rem !important;
-        border-radius: 6px !important;
-        border-left: 3px solid #667eea;
-        margin: 0.5rem 0 !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 0.8rem !important;
+        border-radius: 4px !important;
+        border-left: 2px solid #667eea;
+        margin: 0.3rem 0 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         color: var(--text-color);
         max-width: 800px !important;
-        font-size: 0.85rem !important;
-        line-height: 1.3 !important;
+        font-size: 0.8rem !important;
+        line-height: 1.2 !important;
     }
     
     /* Buttons */
@@ -112,23 +113,23 @@ CSS = """
         background: var(--primary-gradient);
         color: white;
         border: none;
-        border-radius: 20px;
-        padding: 0.4rem 1.2rem;
+        border-radius: 18px;
+        padding: 0.3rem 1rem;
         font-weight: 500;
         transition: all 0.2s ease;
     }
     
     .stButton > button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     /* Sidebar buttons */
     [data-testid="stSidebar"] .stButton > button {
-        padding: 0.3rem 0.8rem !important;
-        border-radius: 8px !important;
-        font-size: 0.8rem !important;
-        line-height: 1.2 !important;
+        padding: 0.2rem 0.6rem !important;
+        border-radius: 6px !important;
+        font-size: 0.75rem !important;
+        line-height: 1.1 !important;
     }
     
     /* Conversation list */
@@ -139,29 +140,29 @@ CSS = """
     #convo-list .conv-group { display: flex; flex-direction: column; gap: 0 !important; margin: 0 !important; padding: 0 !important; }
     #convo-list .conv-row { margin: 0 !important; padding: 0 !important; }
     #convo-list .conv-row [data-testid="column"] { padding: 0 !important; margin: 0 !important; }
-    #convo-list .conv-title .stButton > button { box-shadow: none !important; background: var(--card-background) !important; color: var(--text-color) !important; border-radius: 6px !important; padding: 0.4rem 0.8rem !important; }
-    #convo-list .conv-actions .stButton > button { padding: 0.2rem 0.6rem !important; font-size: 0.75rem !important; border-radius: 6px !important; }
-    #convo-list .conv-actions { margin: 0 !important; }
+    #convo-list .conv-title .stButton > button { box-shadow: none !important; background: var(--card-background) !important; color: var(--text-color) !important; border-radius: 6px !important; padding: 0.3rem 0.6rem !important; }
+    #convo-list .conv-actions .stButton > button { padding: 0.15rem 0.4rem !important; font-size: 0.7rem !important; border-radius: 4px !important; }
+    #convo-list .conv-actions { margin: 0 !important; margin-top: 0 !important; }
     
     /* Info box */
     .info-box {
         background: var(--info-box-bg);
-        border-left: 3px solid var(--info-box-border);
-        padding: 0.5rem 0.8rem !important;
-        border-radius: 4px;
-        margin: 0.8rem 0 !important;
+        border-left: 2px solid var(--info-box-border);
+        padding: 0.4rem 0.6rem !important;
+        border-radius: 3px;
+        margin: 0.5rem 0 !important;
         color: var(--text-color);
-        font-size: 0.85rem !important;
+        font-size: 0.8rem !important;
         text-align: center !important;
     }
     
     /* Status indicator */
     .status-indicator {
         display: inline-block;
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
         border-radius: 50%;
-        margin-right: 6px;
+        margin-right: 4px;
     }
     
     .status-active { background: #00b894; animation: pulse 2s infinite; }
@@ -182,15 +183,22 @@ CSS = """
     
     /* Chat bubbles */
     [data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
-    .stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:6px 0!important}
-    .stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:6px 0!important}
-    .stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:8px 12px!important;border-radius:12px 12px 4px 12px!important;max-width:65%!important;margin-left:auto!important}
-    .stChatMessage[data-testid="assistant-message"] .stMarkdown{background:var(--card-background)!important;color:var(--text-color)!important;padding:8px 12px!important;border-radius:12px 12px 12px 4px!important;max-width:65%!important;margin-right:auto!important;border:1px solid var(--border-color)!important}
+    .stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:4px 0!important}
+    .stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:4px 0!important}
+    .stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:6px 10px!important;border-radius:10px 10px 3px 10px!important;max-width:65%!important;margin-left:auto!important}
+    .stChatMessage[data-testid="assistant-message"] .stMarkdown{background:var(--card-background)!important;color:var(--text-color)!important;padding:6px 10px!important;border-radius:10px 10px 10px 3px!important;max-width:65%!important;margin-right:auto!important;border:1px solid var(--border-color)!important}
     
     /* Chat input */
     .stChatInput{background:var(--background-color)!important}
-    .stChatInput>div{background:var(--background-color)!important;border:1px solid var(--border-color)!important;border-radius:10px;padding:5px}
-    .stChatInput textarea,.stChatInput input{font-size:0.9rem;color:var(--text-color)!important}
+    .stChatInput>div{background:var(--background-color)!important;border:1px solid var(--border-color)!important;border-radius:8px;padding:3px}
+    .stChatInput textarea,.stChatInput input{font-size:0.85rem;color:var(--text-color)!important}
+    
+    /* Sidebar adjustments */
+    [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { margin: 0 !important; padding: 0 !important; }
+    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] h4 { margin: 0 !important; padding: 0 !important; font-size: 1.1rem !important; }
+    [data-testid="stSidebar"] .stSelectbox { margin: 0 !important; padding: 0 !important; }
+    [data-testid="stSidebar"] .stTextInput { margin: 0 !important; padding: 0 !important; }
+    [data-testid="stSidebar"] .stCaption { margin: 0.1rem 0 !important; padding: 0 !important; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -216,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div style="margin-bottom:0.8rem;"><h3 style="margin:0;font-size:1.2rem;">🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -248,7 +256,7 @@ with st.sidebar:
             st.rerun()
     if st.button("➕ New Chat", use_container_width=True):
         i = str(uuid.uuid4()); S.conversations[i] = {"title":"New Chat","messages":[]}; S.cur = i; _save(S.conversations); st.rerun()
-    st.markdown('<div style="margin-top:0.8rem;"><h4 style="margin:0;font-size:1rem;">Conversations</h4></div>', unsafe_allow_html=True)
+    st.markdown('<div><h4>Conversations</h4></div>', unsafe_allow_html=True)
     st.markdown('<div id="convo-list">', unsafe_allow_html=True)
     if not S.conversations: st.markdown('<div class="info-box">No conversations yet. Start a new chat!</div>', unsafe_allow_html=True)
     for i, c in list(S.conversations.items()):
