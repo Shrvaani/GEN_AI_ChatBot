@@ -330,14 +330,14 @@ if prompt := st.chat_input("Type your message here..."):
                     max_tokens=1000,
                     stream=True
                 )
-            out, box = "", st.empty()
-            for ch in resp:
+                out, box = "", st.empty()
+                for ch in resp:
                     if hasattr(ch, 'choices') and len(ch.choices) > 0:
                         delta = ch.choices[0].delta
                         if hasattr(delta, 'content') and delta.content:
                             out += delta.content
-                box.markdown(out+"▌")
-            box.markdown(out); msgs.append({"role":"assistant","content":out})
+                    box.markdown(out+"▌")
+                box.markdown(out); msgs.append({"role":"assistant","content":out})
             if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
             S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
