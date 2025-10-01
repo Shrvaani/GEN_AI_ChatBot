@@ -221,7 +221,7 @@ if S.hf:
 if "rename_id" not in S: S.rename_id = None
 if "rename_value" not in S: S.rename_value = ""
 if "confirm_delete_id" not in S: S.confirm_delete_id = None
-VERSION = "ui-rename-delete+token-ctrl v4"
+VERSION = "ui-rename-delete+token-ctrl v5"
 
 with st.sidebar:
     st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
