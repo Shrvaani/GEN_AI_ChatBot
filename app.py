@@ -323,14 +323,19 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=True)
-                out, box = "", st.empty()
-                for ch in resp:
-                    t = getattr(getattr(ch.choices[0],"delta",object()),"content",None)
-                    if t is None and hasattr(ch,"generated_text"): out = ch.generated_text
-                    elif t: out += t
-                    box.markdown(out+"▌")
-                box.markdown(out); msgs.append({"role":"assistant","content":out})
+                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=False)
+                # Extract response (non-streaming)
+                try:
+                    choice = resp.choices[0]
+                    msg = choice.message
+                    if isinstance(msg, dict):
+                        out = msg.get("content") or ""
+                    else:
+                        out = getattr(msg, "content", "") or ""
+                except Exception:
+                    out = str(resp)
+                st.markdown(out)
+                msgs.append({"role":"assistant","content":out})
                 if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
                 S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
