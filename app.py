@@ -1,23 +1,22 @@
 import streamlit as st
 import os, json, uuid
 from dotenv import load_dotenv
-from groq import Groq
-
+from huggingface_hub import InferenceClient
+from huggingface_hub import HfFolder
 load_dotenv()
-st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="GPT-2 Chat", page_icon="🤖", layout="wide")
 
-# Fallback: try to read API key from api.txt if present
-def _fallback_read_api_key():
+# Fallback: try to read HF token from a local api.txt if present (never committed)
+def _fallback_read_hf_token():
     try:
         if os.path.exists("api.txt"):
             txt = open("api.txt","r",encoding="utf-8").read()
+            for part in txt.replace("\n"," ").split():
+                if part.startswith("hf_") and len(part) > 10:
+                    return part.strip()
             for ln in txt.splitlines():
-                if "GROQ" in ln and "=" in ln:
+                if "HF_TOKEN" in ln and "=" in ln:
                     return ln.split("=",1)[1].strip()
-                # Also check for gsk_ prefix
-                for part in txt.replace("\n"," ").split():
-                    if part.startswith("gsk_") and len(part) > 10:
-                        return part.strip()
     except Exception:
         pass
     return ""
@@ -181,9 +180,9 @@ CSS = """
     .stApp[data-theme="dark"] .stText { color: var(--text-color) !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="success"] { background-color: #22543d !important; color: #9ae6b4 !important; border: 1px solid #38a169 !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="error"] { background-color: #742a2a !important; color: #feb2b2 !important; border: 1px solid #e53e3e !important; }
-
-/* Chat bubbles */
-[data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
+    
+    /* Chat bubbles */
+    [data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
     .stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:4px 0!important}
     .stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:4px 0!important}
     .stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:6px 10px!important;border-radius:10px 10px 3px 10px!important;max-width:65%!important;margin-left:auto!important}
@@ -216,45 +215,53 @@ def _save(d):
 S = st.session_state
 if "conversations" not in S: S.conversations = _load()
 if "cur" not in S: S.cur = next(iter(S.conversations), None)
-if "groq_key" not in S: S.groq_key = os.getenv("GROQ_API_KEY", "") or _fallback_read_api_key()
-if S.groq_key:
-    os.environ["GROQ_API_KEY"] = S.groq_key
+
+
+if "hf" not in S:
+    S.hf = (
+        os.getenv("HF_TOKEN", "")
+        or _fallback_read_hf_token()
+        or HfFolder.get_token()
+        or ""
+    )
+if S.hf:
+    os.environ["HF_TOKEN"] = S.hf
 if "rename_id" not in S: S.rename_id = None
 if "rename_value" not in S: S.rename_value = ""
 if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 Groq Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 GPT-2 Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
-    if not S.groq_key:
-        token_input = st.text_input("Groq API Key", value=S.groq_key, type="password", help="Get free key at https://console.groq.com")
-        if token_input != S.groq_key:
-            S.groq_key = token_input.strip()
-            if S.groq_key:
-                os.environ["GROQ_API_KEY"] = S.groq_key
-        st.caption(f"API Key: {'Set' if S.groq_key else 'Not set'}")
-        save_env = st.checkbox("Save key to .env (local only)")
-        if save_env and S.groq_key and st.button("Save GROQ_API_KEY", use_container_width=True):
-            try:
-                env_path = ".env"
-                lines = []
-                if os.path.exists(env_path):
-                    with open(env_path, "r", encoding="utf-8") as f:
-                        lines = f.read().splitlines()
-                lines = [ln for ln in lines if not ln.strip().startswith("GROQ_API_KEY=")]
-                lines.append(f"GROQ_API_KEY={S.groq_key}")
-                with open(env_path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines) + "\n")
-                st.success("Saved GROQ_API_KEY to .env")
-            except Exception as e:
-                st.error(f"Failed to save .env: {e}")
-        if st.button("Reload .env", use_container_width=True):
-            load_dotenv(override=True)
-            S.groq_key = os.getenv("GROQ_API_KEY", "") or S.groq_key
-            if S.groq_key:
-                os.environ["GROQ_API_KEY"] = S.groq_key
-            st.rerun()
+    # Always allow overriding token from the UI (deployment-friendly)
+    token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face or provider API token. This overrides .env/api.txt.")
+    if token_input != S.hf:
+        S.hf = token_input.strip()
+        if S.hf:
+            os.environ["HF_TOKEN"] = S.hf
+    st.caption(f"Token: {'Set' if S.hf else 'Not set'}")
+    save_env = st.checkbox("Save token to .env (local only)")
+    if save_env and S.hf and st.button("Save HF_TOKEN", use_container_width=True):
+        try:
+            env_path = ".env"
+            lines = []
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    lines = f.read().splitlines()
+            lines = [ln for ln in lines if not ln.strip().startswith("HF_TOKEN=")]
+            lines.append(f"HF_TOKEN={S.hf}")
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+            st.success("Saved HF_TOKEN to .env")
+        except Exception as e:
+            st.error(f"Failed to save .env: {e}")
+    if st.button("Reload .env", use_container_width=True):
+        load_dotenv(override=True)
+        S.hf = os.getenv("HF_TOKEN", "") or S.hf
+        if S.hf:
+            os.environ["HF_TOKEN"] = S.hf
+        st.rerun()
     if st.button("➕ New Chat", use_container_width=True):
         i = str(uuid.uuid4()); S.conversations[i] = {"title":"New Chat","messages":[]}; S.cur = i; _save(S.conversations); st.rerun()
     st.markdown('<div><h4>Conversations</h4></div>', unsafe_allow_html=True)
@@ -294,17 +301,20 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 Groq Chat</h1>
-    <p>Fast AI chat powered by Groq (Llama 3.3 70B)</p>
+    <h1>🤖 GPT-2 Chat</h1>
+    <p>Conversational AI powered by GPT-2 model</p>
 </div>
 """, unsafe_allow_html=True)
 
-if not S.groq_key:
-    st.markdown('<div class="info-box">⚠️ Set GROQ_API_KEY in the sidebar. Get free key at https://console.groq.com</div>', unsafe_allow_html=True)
+if not S.hf:
+    st.markdown('<div class="info-box">⚠️ Set HF_TOKEN in the sidebar to enable chatting.</div>', unsafe_allow_html=True)
     client = None
 else:
     try:
-        client = Groq(api_key=S.groq_key)
+        try:
+            client = InferenceClient(provider="auto", token=S.hf)
+        except TypeError:
+            client = InferenceClient(token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
@@ -321,26 +331,72 @@ if prompt := st.chat_input("Type your message here..."):
     with st.chat_message("assistant"):
         try:
             if client is None:
-                st.error("GROQ_API_KEY missing. Add it in the sidebar.")
+                st.error("No valid client available. Check token and model status.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs,
-                    temperature=0.7,
-                    max_tokens=1000
-                )
-                out = completion.choices[0].message.content
-                st.markdown(out)
+                # Build the initial prompt with conversation history
+                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                for msg in msgs:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    prompt_text += f"{role}: {msg['content']}\n"
+                prompt_text += "Assistant:"
+                
+                # Use text_generation directly
+                # Prefer conversational task; on 404 or unsupported, fall back to HF text_generation
+                target_model = "deepseek-ai/DeepSeek-V3-0324"
+                fallback_model = "HuggingFaceH4/zephyr-7b-beta"
+                out = ""
+                used_fallback = False
+                try:
+                    if hasattr(client, "chat") and hasattr(client.chat, "completions"):
+                        resp = client.chat.completions.create(
+                            model=target_model,
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant."},
+                                {"role": "user", "content": prompt_text},
+                            ],
+                            stream=True,
+                            temperature=0.7,
+                            max_tokens=1000,
+                        )
+                        box = st.empty()
+                        for chunk in resp:
+                            delta = (
+                                getattr(chunk, "choices", [None])[0]
+                                and getattr(chunk.choices[0], "delta", None)
+                            )
+                            token_text = (getattr(delta, "content", None) or "") if delta else ""
+                            out += token_text
+                            box.markdown(out + "▌")
+                        box.markdown(out)
+                    else:
+                        raise AttributeError("chat API not available")
+                except Exception as e_conv:
+                    used_fallback = True
+                    out = ""
+                    resp = client.text_generation(
+                        prompt=prompt_text,
+                        model=fallback_model,
+                        temperature=0.7,
+                        max_new_tokens=1000,
+                        stream=True
+                    )
+                    box = st.empty()
+                    for token in resp:
+                        out += token
+                        box.markdown(out + "▌")
+                    box.markdown(out)
+                
                 msgs.append({"role":"assistant","content":out})
-                if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
-                S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
-        except Exception as e: st.error(str(e))
+                if len(msgs) == 2: 
+                    S.conversations[S.cur]["title"] = msgs[0]["content"][:30] + ("..." if len(msgs[0]["content"]) > 30 else "")
+                S.conversations[S.cur]["messages"] = msgs
+                _save(S.conversations)
+        except Exception as e:
+            st.error(f"Generation failed: {str(e)}. Check model endpoint status or try again later. Request ID: {getattr(e, 'request_id', 'N/A')}")
 
 with st.container():
     st.markdown('<div id="clear-chat">', unsafe_allow_html=True)
     if S.cur and st.button("🗑️ Clear Current Chat", use_container_width=True):
         S.conversations[S.cur]["messages"] = []; _save(S.conversations); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
-
-    
