@@ -1,22 +1,23 @@
 import streamlit as st
 import os, json, uuid
 from dotenv import load_dotenv
-from huggingface_hub import InferenceClient
+from groq import Groq
 
 load_dotenv()
 st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
 
-# Fallback: try to read HF token from a local api.txt if present (never committed)
-def _fallback_read_hf_token():
+# Fallback: try to read API key from api.txt if present
+def _fallback_read_api_key():
     try:
         if os.path.exists("api.txt"):
             txt = open("api.txt","r",encoding="utf-8").read()
-            for part in txt.replace("\n"," ").split():
-                if part.startswith("hf_") and len(part) > 10:
-                    return part.strip()
             for ln in txt.splitlines():
-                if "HF_TOKEN" in ln and "=" in ln:
+                if "GROQ" in ln and "=" in ln:
                     return ln.split("=",1)[1].strip()
+                # Also check for gsk_ prefix
+                for part in txt.replace("\n"," ").split():
+                    if part.startswith("gsk_") and len(part) > 10:
+                        return part.strip()
     except Exception:
         pass
     return ""
@@ -215,44 +216,44 @@ def _save(d):
 S = st.session_state
 if "conversations" not in S: S.conversations = _load()
 if "cur" not in S: S.cur = next(iter(S.conversations), None)
-if "hf" not in S: S.hf = os.getenv("HF_TOKEN", "") or _fallback_read_hf_token()
-if S.hf:
-    os.environ["HF_TOKEN"] = S.hf
+if "groq_key" not in S: S.groq_key = os.getenv("GROQ_API_KEY", "") or _fallback_read_api_key()
+if S.groq_key:
+    os.environ["GROQ_API_KEY"] = S.groq_key
 if "rename_id" not in S: S.rename_id = None
 if "rename_value" not in S: S.rename_value = ""
 if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 DialoGPT Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 Groq Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
-    if not S.hf:
-        token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
-        if token_input != S.hf:
-            S.hf = token_input.strip()
-            if S.hf:
-                os.environ["HF_TOKEN"] = S.hf
-        st.caption(f"Token: {'Set' if S.hf else 'Not set'}")
-        save_env = st.checkbox("Save token to .env (local only)")
-        if save_env and S.hf and st.button("Save HF_TOKEN", use_container_width=True):
+    if not S.groq_key:
+        token_input = st.text_input("Groq API Key", value=S.groq_key, type="password", help="Get free key at https://console.groq.com")
+        if token_input != S.groq_key:
+            S.groq_key = token_input.strip()
+            if S.groq_key:
+                os.environ["GROQ_API_KEY"] = S.groq_key
+        st.caption(f"API Key: {'Set' if S.groq_key else 'Not set'}")
+        save_env = st.checkbox("Save key to .env (local only)")
+        if save_env and S.groq_key and st.button("Save GROQ_API_KEY", use_container_width=True):
             try:
                 env_path = ".env"
                 lines = []
                 if os.path.exists(env_path):
                     with open(env_path, "r", encoding="utf-8") as f:
                         lines = f.read().splitlines()
-                lines = [ln for ln in lines if not ln.strip().startswith("HF_TOKEN=")]
-                lines.append(f"HF_TOKEN={S.hf}")
+                lines = [ln for ln in lines if not ln.strip().startswith("GROQ_API_KEY=")]
+                lines.append(f"GROQ_API_KEY={S.groq_key}")
                 with open(env_path, "w", encoding="utf-8") as f:
                     f.write("\n".join(lines) + "\n")
-                st.success("Saved HF_TOKEN to .env")
+                st.success("Saved GROQ_API_KEY to .env")
             except Exception as e:
                 st.error(f"Failed to save .env: {e}")
         if st.button("Reload .env", use_container_width=True):
             load_dotenv(override=True)
-            S.hf = os.getenv("HF_TOKEN", "") or S.hf
-            if S.hf:
-                os.environ["HF_TOKEN"] = S.hf
+            S.groq_key = os.getenv("GROQ_API_KEY", "") or S.groq_key
+            if S.groq_key:
+                os.environ["GROQ_API_KEY"] = S.groq_key
             st.rerun()
     if st.button("➕ New Chat", use_container_width=True):
         i = str(uuid.uuid4()); S.conversations[i] = {"title":"New Chat","messages":[]}; S.cur = i; _save(S.conversations); st.rerun()
@@ -293,17 +294,17 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 DialoGPT Chat</h1>
-    <p>Conversational AI powered by Microsoft DialoGPT</p>
+    <h1>🤖 Groq Chat</h1>
+    <p>Fast AI chat powered by Groq (Llama 3.3 70B)</p>
 </div>
 """, unsafe_allow_html=True)
 
-if not S.hf:
-    st.markdown('<div class="info-box">⚠️ Set HF_TOKEN in the sidebar to enable chatting.</div>', unsafe_allow_html=True)
+if not S.groq_key:
+    st.markdown('<div class="info-box">⚠️ Set GROQ_API_KEY in the sidebar. Get free key at https://console.groq.com</div>', unsafe_allow_html=True)
     client = None
 else:
     try:
-        client = InferenceClient("microsoft/DialoGPT-medium", token=S.hf)
+        client = Groq(api_key=S.groq_key)
     except Exception as e:
         client = None
         st.error(str(e))
@@ -320,20 +321,16 @@ if prompt := st.chat_input("Type your message here..."):
     with st.chat_message("assistant"):
         try:
             if client is None:
-                st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
+                st.error("GROQ_API_KEY missing. Add it in the sidebar.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=False)
-                # Extract response (non-streaming)
-                try:
-                    choice = resp.choices[0]
-                    msg = choice.message
-                    if isinstance(msg, dict):
-                        out = msg.get("content") or ""
-                    else:
-                        out = getattr(msg, "content", "") or ""
-                except Exception:
-                    out = str(resp)
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs,
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+                out = completion.choices[0].message.content
                 st.markdown(out)
                 msgs.append({"role":"assistant","content":out})
                 if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
