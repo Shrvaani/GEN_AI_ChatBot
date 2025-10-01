@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 
 load_dotenv()
-st.set_page_config(page_title="Zephyr 7B Chat", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
 
 # Fallback: try to read HF token from a local api.txt if present (never committed)
 def _fallback_read_hf_token():
@@ -180,14 +180,14 @@ CSS = """
     .stApp[data-theme="dark"] .stText { color: var(--text-color) !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="success"] { background-color: #22543d !important; color: #9ae6b4 !important; border: 1px solid #38a169 !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="error"] { background-color: #742a2a !important; color: #feb2b2 !important; border: 1px solid #e53e3e !important; }
-
+    
     /* Chat bubbles */
     [data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
     .stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:4px 0!important}
     .stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:4px 0!important}
     .stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:6px 10px!important;border-radius:10px 10px 3px 10px!important;max-width:65%!important;margin-left:auto!important}
     .stChatMessage[data-testid="assistant-message"] .stMarkdown{background:var(--card-background)!important;color:var(--text-color)!important;padding:6px 10px!important;border-radius:10px 10px 10px 3px!important;max-width:65%!important;margin-right:auto!important;border:1px solid var(--border-color)!important}
-
+    
     /* Chat input */
     .stChatInput{background:var(--background-color)!important}
     .stChatInput>div{background:var(--background-color)!important;border:1px solid var(--border-color)!important;border-radius:8px;padding:3px}
@@ -224,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 Zephyr 7B Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -293,8 +293,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 Zephyr 7B Chat</h1>
-    <p>Conversational AI powered by Zephyr 7B Beta</p>
+    <h1>🤖 GPT-OSS-20B Chat</h1>
+    <p>Conversational AI powered by open-source 20B model</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("HuggingFaceH4/zephyr-7b-beta", token=S.hf)
+        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
@@ -323,34 +323,21 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                # Format messages into a single prompt
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
-                
-                resp = client.text_generation(
-                    prompt_text,
-                    temperature=0.7,
-                    max_new_tokens=1000,
-                    stream=True
-                )
+                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=True)
                 out, box = "", st.empty()
-                for token in resp:
-                    out += token
-                    box.markdown(out + "▌")
-                box.markdown(out)
-                msgs.append({"role":"assistant","content":out})
-                if len(msgs) == 2:
-                    S.conversations[S.cur]["title"] = msgs[0]["content"][:30] + ("..." if len(msgs[0]["content"]) > 30 else "")
-                S.conversations[S.cur]["messages"] = msgs
-                _save(S.conversations)
-        except Exception as e:
-            st.error(str(e))
+                for ch in resp:
+                    t = getattr(getattr(ch.choices[0],"delta",object()),"content",None)
+                    if t is None and hasattr(ch,"generated_text"): out = ch.generated_text
+                    elif t: out += t
+                    box.markdown(out+"▌")
+                box.markdown(out); msgs.append({"role":"assistant","content":out})
+                if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
+                S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
+        except Exception as e: st.error(str(e))
 
 with st.container():
     st.markdown('<div id="clear-chat">', unsafe_allow_html=True)
     if S.cur and st.button("🗑️ Clear Current Chat", use_container_width=True):
         S.conversations[S.cur]["messages"] = []; _save(S.conversations); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
