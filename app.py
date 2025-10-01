@@ -303,14 +303,10 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("gpt2", token=S.hf)
+        client = InferenceClient("HuggingFaceH4/zephyr-7b-beta", token=S.hf)
     except Exception as e:
-        st.warning(f"Primary model unavailable ({str(e)}). Falling back to distilgpt2")
-        try:
-            client = InferenceClient("distilgpt2", token=S.hf)
-        except Exception as fallback_e:
-            st.error(f"Fallback failed: {str(fallback_e)}")
-            client = None
+        client = None
+        st.error(str(e))
 
 msgs = S.conversations.get(S.cur, {}).get("messages", []) if S.cur else []
 for m in msgs:
