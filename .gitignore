@@ -1,7 +1,0 @@
-.env
-.env.*
-__pycache__/
-*.pyc
-.DS_Store
-conversations.json
-DO_NOT_TOUCH/
