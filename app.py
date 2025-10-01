@@ -386,6 +386,7 @@ if prompt := st.chat_input("Type your message here..."):
                         out += token
                         box.markdown(out + "▌")
                     box.markdown(out)
+
                 
                 msgs.append({"role":"assistant","content":out})
                 if len(msgs) == 2: 
