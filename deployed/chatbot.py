@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 
 load_dotenv()
-st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Llama 3.2 Chat", page_icon="🤖", layout="wide")
 
 # Fallback: try to read HF token from a local api.txt if present (never committed)
 def _fallback_read_hf_token():
@@ -224,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 Llama 3.2 Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -293,8 +293,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 GPT-OSS-20B Chat</h1>
-    <p>Conversational AI powered by open-source 20B model</p>
+    <h1>🤖 Llama 3.2 Chat</h1>
+    <p>Conversational AI powered by Meta Llama 3.2</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
+        client = InferenceClient("meta-llama/Llama-3.2-3B-Instruct", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
