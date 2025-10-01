@@ -152,7 +152,7 @@ if "rename_id" not in S: S.rename_id = None
 if "rename_value" not in S: S.rename_value = ""
 
 with st.sidebar:
-    st.title("🤖 GPT-OSS-20B Chat")
+    st.title("🤖 Phi-3 Mini Chat")
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1)
     
     if st.button("➕ New Chat", use_container_width=True):
@@ -210,8 +210,8 @@ with st.sidebar:
 # Main Header
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 GPT-OSS-20B Chat</h1>
-    <p>Open-source 20B reasoning chat assistant</p>
+    <h1>🤖 Phi-3 Mini Chat</h1>
+    <p>Conversational AI powered by Microsoft Phi-3</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -220,7 +220,7 @@ if not S.hf:
     st.stop()
 
 try:
-    client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
+    client = InferenceClient("microsoft/Phi-3-mini-4k-instruct", token=S.hf)
 except Exception as e:
     st.error(str(e))
     st.stop()
