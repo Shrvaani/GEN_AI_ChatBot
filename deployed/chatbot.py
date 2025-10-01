@@ -323,23 +323,34 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                # Format the prompt for text generation
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
-                
-                resp = client.text_generation(
-                    prompt_text,
-                    temperature=0.7,
-                    max_new_tokens=1000,
-                    stream=True
-                )
-                out, box = "", st.empty()
-                for token in resp:
-                    out += token
-                    box.markdown(out + "▌")
+                # Try chat_completion first
+                try:
+                    resp = client.chat_completion(
+                        messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}] + msgs,
+                        temperature=0.7,
+                        max_tokens=2048,
+                        stream=False
+                    )
+                    out = _extract_assistant_text(resp)
+                    if not out:
+                        raise Exception("No valid response from chat_completion")
+                except Exception as chat_err:
+                    st.warning(f"Chat completion failed: {str(chat_err)}. Falling back to text generation.")
+                    # Fallback to text_generation
+                    prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                    for msg in msgs:
+                        role = "User" if msg["role"] == "user" else "Assistant"
+                        prompt_text += f"{role}: {msg['content']}\n"
+                    prompt_text += "Assistant:"
+                    resp = client.text_generation(
+                        prompt_text,
+                        temperature=0.7,
+                        max_new_tokens=2048,
+                        stream=False
+                    )
+                    out = resp if isinstance(resp, str) else resp.generated_text if hasattr(resp, "generated_text") else ""
+                # Display response
+                box = st.empty()
                 box.markdown(out)
                 msgs.append({"role":"assistant","content":out})
                 if len(msgs) == 2:
@@ -354,3 +365,21 @@ with st.container():
     if S.cur and st.button("🗑️ Clear Current Chat", use_container_width=True):
         S.conversations[S.cur]["messages"] = []; _save(S.conversations); st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
+
+# Helper function to extract assistant text (from RAG code)
+def _extract_assistant_text(chat_resp) -> str:
+    try:
+        choice = chat_resp.choices[0]
+        msg = choice.message
+        if isinstance(msg, dict):
+            content = msg.get("content") or msg.get("reasoning_content")
+        else:
+            content = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None)
+        if content and isinstance(content, str):
+            return content.strip()
+    except Exception:
+        pass
+    try:
+        return str(chat_resp).strip()
+    except Exception:
+        return ""
