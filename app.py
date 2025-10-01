@@ -1,186 +1,339 @@
+import os
+import json
+from pathlib import Path
 import streamlit as st
-import os, json, uuid
 from dotenv import load_dotenv
+import uuid
 from huggingface_hub import InferenceClient
 
+# Helper to safely extract assistant text from HF chat response
+def _extract_assistant_text(chat_resp) -> str:
+    try:
+        choice = chat_resp.choices[0]
+        msg = choice.message
+        if isinstance(msg, dict):
+            content = msg.get("content") or msg.get("reasoning_content")
+        else:
+            content = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None)
+        if content and isinstance(content, str):
+            return content.strip()
+    except Exception:
+        pass
+    try:
+        return str(chat_resp).strip()
+    except Exception:
+        return ""
+
+# --- Streamlit Setup ---
 load_dotenv()
 st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
 
-# Fallback: try to read HF token from a local api.txt if present (never committed)
-def _fallback_read_hf_token():
+# --- Persistence helpers (JSON on local disk) ---
+PERSIST_DIR = Path.home() / ".gpt_oss_chat"
+PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+PERSIST_FILE = PERSIST_DIR / "chats.json"
+
+def load_persisted_state() -> dict:
+    """Load chats from disk."""
     try:
-        if os.path.exists("api.txt"):
-            txt = open("api.txt","r",encoding="utf-8").read()
-            for part in txt.replace("\n"," ").split():
-                if part.startswith("hf_") and len(part) > 10:
-                    return part.strip()
-            for ln in txt.splitlines():
-                if "HF_TOKEN" in ln and "=" in ln:
-                    return ln.split("=",1)[1].strip()
-    except Exception:
-        pass
-    return ""
+        if PERSIST_FILE.exists():
+            data = json.loads(PERSIST_FILE.read_text())
+            if isinstance(data, dict) and data.get("version") == 1:
+                return data
+    except Exception as e:
+        st.warning(f"Failed to load persisted state: {str(e)}")
+    return {"version": 1, "chats": {}, "active_chat_id": None}
 
-CSS = """
-<style>
-    /* [Your existing CSS here - unchanged] */
-</style>
-"""
-st.markdown(CSS, unsafe_allow_html=True)
+def save_persisted_state(chats: dict, active_chat_id: str | None) -> bool:
+    """Persist chats in a JSON-safe structure."""
+    def _to_safe_messages(msgs):
+        safe = []
+        for m in msgs or []:
+            if isinstance(m, dict):
+                q = m.get("q") or m.get("question") or (m.get("role") == "user" and m.get("content"))
+                a = m.get("a") or m.get("answer") or (m.get("role") == "assistant" and m.get("content"))
+                safe.append({"q": q, "a": a})
+            elif isinstance(m, (list, tuple)) and len(m) >= 2:
+                q, a = m[0], m[1]
+                safe.append({"q": q, "a": a})
+            else:
+                safe.append({"q": None, "a": None})
+        return safe
 
-# Helpers
-def _load():
-    try: return json.load(open("conversations.json","r",encoding="utf-8")) if os.path.exists("conversations.json") else {}
-    except: return {}
+    safe_chats = {}
+    for cid, chat in chats.items():
+        title = chat.get("title", "New Chat") if isinstance(chat, dict) else "New Chat"
+        msgs = chat.get("messages", []) if isinstance(chat, dict) else []
+        safe_chats[cid] = {"title": title, "messages": _to_safe_messages(msgs)}
 
-def _save(d):
-    try: json.dump(d, open("conversations.json","w",encoding="utf-8"), ensure_ascii=False, indent=2)
-    except: pass
+    for attempt in range(3):
+        try:
+            payload = {"version": 1, "chats": safe_chats, "active_chat_id": active_chat_id}
+            PERSIST_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+            return True
+        except Exception as e:
+            st.error(f"Attempt {attempt + 1} failed to save chat state: {str(e)}")
+            import time
+            time.sleep(0.5 * (attempt + 1))
+    return False
 
-S = st.session_state
-if "conversations" not in S: S.conversations = _load()
-if "cur" not in S: S.cur = next(iter(S.conversations), None)
-if "hf" not in S: S.hf = os.getenv("HF_TOKEN", "") or _fallback_read_hf_token()
-if S.hf:
-    os.environ["HF_TOKEN"] = S.hf
-if "rename_id" not in S: S.rename_id = None
-if "rename_value" not in S: S.rename_value = ""
-if "confirm_delete_id" not in S: S.confirm_delete_id = None
-VERSION = "ui-rename-delete+token-ctrl v4"
+# Consolidated CSS
+st.markdown(
+    """
+    <style>
+    :root {
+        --brand-blue: #6366f1;
+        --brand-purple: #a855f7;
+        --sidebar-bg: #f0f4ff;
+        --main-bg: #ffffff;
+        --button-gradient: linear-gradient(to right, var(--brand-blue), var(--brand-purple));
+        --title-gradient: linear-gradient(to right, #6366f1, #a855f7);
+        --radius: 8px;
+    }
+    .block-container { max-width: 860px; padding-top: 4rem; }
+    html, body, [data-testid="stAppViewContainer"] { font-size: 15px; }
+    hr { display: none !important; }
+    section[data-testid="stSidebar"] { background: var(--sidebar-bg) !important; }
+    section[data-testid="stSidebar"] .block-container { background: transparent; padding: 14px; margin: 0; }
+    section[data-testid="stSidebar"] h2 { font-weight: 700; margin-bottom: 0.25rem; }
+    section[data-testid="stSidebar"] .stMarkdown { opacity: 0.95; }
+    section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        border-radius: var(--radius); border: 1px solid #e0e7ff; background: white;
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        border-radius: var(--radius); font-weight: 600; transition: all 0.2s ease;
+        background: var(--button-gradient); color: white !important; border: none;
+    }
+    section[data-testid="stSidebar"] .stButton > button:hover { filter: brightness(1.1); }
+    section[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
+        background: var(--button-gradient); opacity: 0.8;
+    }
+    div[data-testid="stAppViewContainer"] > .main { background: var(--main-bg); }
+    h1 {
+        background: var(--title-gradient); color: white; padding: 12px 20px;
+        border-radius: var(--radius); text-align: center; font-size: 1.8rem !important;
+    }
+    h1 + div[data-testid="stMarkdownContainer"] p {
+        text-align: center; color: #6b7280; margin-top: -10px; font-size: 0.95rem;
+    }
+    .stChatMessage div[data-testid="stMarkdownContainer"] { font-size: 0.98rem; }
+    .stChatMessage[aria-label="assistant"] div[data-testid="stMarkdownContainer"] {
+        background: white; border: 1px solid #e0e7ff; border-left: 4px solid var(--brand-blue);
+        border-radius: var(--radius); padding: 12px;
+    }
+    .stChatMessage[aria-label="user"] div[data-testid="stMarkdownContainer"] {
+        background: #f9fafb; border: 1px solid #e0e7ff; border-right: 4px solid var(--brand-purple);
+        border-radius: var(--radius); padding: 12px;
+    }
+    div[data-testid="stChatInput"] textarea {
+        min-height: 42px !important; font-size: 0.98rem; border-radius: var(--radius);
+        background: #f0f4ff; border: 1px solid #c7d2fe;
+    }
+    div[data-baseweb="notification"] { border-radius: var(--radius); }
+    div.stExpander { border-radius: var(--radius); border: 1px solid #e0e7ff; }
+    section[data-testid="stSidebar"] .stButton { margin-bottom: 8px; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
+# --- Multi-chat state ---
+if "hydrated" not in st.session_state:
+    persisted = load_persisted_state()
+    st.session_state.chats = persisted.get("chats", {}) or {}
+    st.session_state.active_chat_id = persisted.get("active_chat_id")
+    st.session_state.hydrated = True
+    if not st.session_state.chats:
+        _id = str(uuid.uuid4())
+        st.session_state.chats[_id] = {"title": "New Chat", "messages": []}
+        st.session_state.active_chat_id = _id
+        save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+
+def _create_new_chat(title: str | None = None):
+    chat_id = str(uuid.uuid4())
+    if not title:
+        title = f"New Chat {len(st.session_state.chats)+1}"
+    st.session_state.chats[chat_id] = {"title": title, "messages": []}
+    st.session_state.active_chat_id = chat_id
+    if not save_persisted_state(st.session_state.chats, st.session_state.active_chat_id):
+        st.error("Failed to create new chat due to persistence error.")
+    else:
+        st.success("New chat created!")
+
+def _get_active_chat():
+    cid = st.session_state.active_chat_id
+    if cid and cid in st.session_state.chats:
+        return st.session_state.chats[cid]
+    if not st.session_state.chats:
+        _create_new_chat("New Chat")
+    else:
+        st.session_state.active_chat_id = next(iter(st.session_state.chats))
+    return st.session_state.chats[st.session_state.active_chat_id]
+
+# Sidebar: chat manager
 with st.sidebar:
-    st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
-    level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
-    if not S.hf:
-        token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
-        if token_input != S.hf:
-            S.hf = token_input.strip()
-            if S.hf:
-                os.environ["HF_TOKEN"] = S.hf
-        st.caption(f"Token: {'Set' if S.hf else 'Not set'}")
-        save_env = st.checkbox("Save token to .env (local only)")
-        if save_env and S.hf and st.button("Save HF_TOKEN", use_container_width=True):
-            try:
-                env_path = ".env"
-                lines = []
-                if os.path.exists(env_path):
-                    with open(env_path, "r", encoding="utf-8") as f:
-                        lines = f.read().splitlines()
-                lines = [ln for ln in lines if not ln.strip().startswith("HF_TOKEN=")]
-                lines.append(f"HF_TOKEN={S.hf}")
-                with open(env_path, "w", encoding="utf-8") as f:
-                    f.write("\n".join(lines) + "\n")
-                st.success("Saved HF_TOKEN to .env")
-            except Exception as e:
-                st.error(f"Failed to save .env: {e}")
-        if st.button("Reload .env", use_container_width=True):
-            load_dotenv(override=True)
-            S.hf = os.getenv("HF_TOKEN", "") or S.hf
-            if S.hf:
-                os.environ["HF_TOKEN"] = S.hf
-            st.rerun()
-    if st.button("➕ New Chat", use_container_width=True):
-        i = str(uuid.uuid4()); S.conversations[i] = {"title":"New Chat","messages":[]}; S.cur = i; _save(S.conversations); st.rerun()
-    st.markdown('<div><h4>Conversations</h4></div>', unsafe_allow_html=True)
-    st.markdown('<div id="convo-list">', unsafe_allow_html=True)
-    if not S.conversations: st.markdown('<div class="info-box">No conversations yet. Start a new chat!</div>', unsafe_allow_html=True)
-    for i, c in list(S.conversations.items()):
-        st.markdown('<div class="conv-group">', unsafe_allow_html=True)
-        st.markdown('<div class="conv-title">', unsafe_allow_html=True)
-        if st.button(c.get("title","New Chat"), key=f"sel_{i}", use_container_width=True): S.cur = i; st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('<div class="conv-row conv-actions">', unsafe_allow_html=True)
-        col_left, col_right = st.columns(2)
-        with col_left:
-            if st.button("Rename", key=f"ren_{i}", use_container_width=True):
-                S.rename_id = i; S.rename_value = c.get("title","New Chat")
-        with col_right:
-            if st.button("Delete", key=f"del_{i}", use_container_width=True):
-                S.conversations.pop(i, None)
-                S.cur = next(iter(S.conversations), None)
-                _save(S.conversations)
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-        if S.rename_id == i:
-            new_title = st.text_input("Rename conversation", value=S.rename_value, key=f"ren_input_{i}")
-            rcol1, rcol2 = st.columns(2)
-            if rcol1.button("Save", key=f"ren_save_{i}", use_container_width=True):
-                title = (new_title or "").strip() or c.get("title","New Chat")
-                S.conversations[i]["title"] = title
-                _save(S.conversations)
-                S.rename_id = None; S.rename_value = ""
-                st.rerun()
-            if rcol2.button("Cancel", key=f"ren_cancel_{i}", use_container_width=True):
-                S.rename_id = None; S.rename_value = ""
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.header("🤖 GPT-OSS-20B Chat")
+    if "reasoning_level" not in st.session_state:
+        st.session_state.reasoning_level = "Medium"
+    st.caption("Reasoning Level")
+    st.session_state.reasoning_level = st.selectbox(
+        "Reasoning Level",
+        options=["Low", "Medium", "High"],
+        index=["Low", "Medium", "High"].index(st.session_state.reasoning_level),
+        label_visibility="collapsed",
+        key="reasoning_level_select"
+    )
+    if st.button("New Chat", key="new_chat", use_container_width=True):
+        _create_new_chat(f"Chat {len(st.session_state.chats)+1}")
+        st.rerun()
 
-st.markdown("""
-<div class="main-header">
+    st.subheader("Conversations")
+    if st.button("Clear Current Chat", key="clear_chat", use_container_width=True):
+        active_chat = _get_active_chat()
+        active_chat["messages"] = []
+        save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+        st.rerun()
+
+    # Inline rename state
+    if "rename_id" not in st.session_state:
+        st.session_state.rename_id = None
+        st.session_state.rename_value = ""
+
+    # List chats with robust rename/delete behavior
+    for cid, data in list(st.session_state.chats.items()):
+        title = data.get("title") or f"Chat {cid[:8]}"
+        btn_type = "primary" if cid == st.session_state.active_chat_id else "secondary"
+        if st.button(title, key=f"chat_btn_{cid}", use_container_width=True, type=btn_type):
+            st.session_state.active_chat_id = cid
+            save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+            st.rerun()
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Rename", key=f"ren_{cid}", use_container_width=True, type="secondary"):
+                st.session_state.rename_id = cid
+                st.session_state.rename_value = title
+                st.rerun()
+        with c2:
+            if st.button("Delete", key=f"del_{cid}", use_container_width=True, type="secondary"):
+                if cid in st.session_state.chats:
+                    was_active = (st.session_state.active_chat_id == cid)
+                    st.session_state.chats.pop(cid, None)
+                    if was_active:
+                        st.session_state.active_chat_id = next(iter(st.session_state.chats), None)
+                    save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+                    st.rerun()
+
+        # Inline rename UI
+        if st.session_state.rename_id == cid:
+            new_title = st.text_input(
+                "Rename chat",
+                value=st.session_state.rename_value,
+                key=f"ren_input_{cid}",
+                label_visibility="collapsed",
+            )
+            rc1, rc2 = st.columns(2)
+            with rc1:
+                if st.button("Save", key=f"ren_save_{cid}", use_container_width=True, type="secondary"):
+                    if new_title.strip():
+                        st.session_state.chats[cid]["title"] = new_title.strip()
+                        st.session_state.rename_id = None
+                        st.session_state.rename_value = ""
+                        save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+                        st.rerun()
+                    else:
+                        st.warning("Title cannot be empty")
+            with rc2:
+                if st.button("Cancel", key=f"ren_cancel_{cid}", use_container_width=True, type="secondary"):
+                    st.session_state.rename_id = None
+                    st.session_state.rename_value = ""
+                    st.rerun()
+
+# Main chat interface
+st.markdown(
+    """
     <h1>🤖 GPT-OSS-20B Chat</h1>
     <p>Conversational AI powered by open-source 20B model</p>
-</div>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True,
+)
 
-if not S.hf:
-    st.markdown('<div class="info-box">⚠️ Set HF_TOKEN in the sidebar to enable chatting.</div>', unsafe_allow_html=True)
-    client = None
-else:
+if not os.getenv("HF_TOKEN"):
+    st.error("Missing HF_TOKEN environment variable. Create a token at https://huggingface.co/settings/tokens and set HF_TOKEN.")
+    st.stop()
+
+try:
+    client = InferenceClient("openai/gpt-oss-20b", token=os.getenv("HF_TOKEN"))
+except Exception as e:
+    st.warning(f"Primary model unavailable ({str(e)}). Falling back to microsoft/DialoGPT-medium")
     try:
-        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
-    except Exception as e:
-        st.warning(f"Primary model unavailable ({str(e)}). Falling back to text_generation or microsoft/DialoGPT-medium")
-        try:
-            client = InferenceClient("openai/gpt-oss-20b", token=S.hf)  # Retry with text_generation context
-            # Fallback to alternative model if needed
-            if not client:
-                client = InferenceClient("microsoft/DialoGPT-medium", token=S.hf)
-        except Exception as fallback_e:
-            st.error(f"Fallback failed: {str(fallback_e)}")
-            client = None
+        client = InferenceClient("microsoft/DialoGPT-medium", token=os.getenv("HF_TOKEN"))
+    except Exception as fallback_e:
+        st.error(f"Fallback failed: {str(fallback_e)}")
+        client = None
 
-msgs = S.conversations.get(S.cur, {}).get("messages", []) if S.cur else []
-for m in msgs:
-    with st.chat_message(m["role"]): st.markdown(m["content"])
+active_chat = _get_active_chat()
+for entry in active_chat["messages"]:
+    q = entry.get("q") or (entry.get("role") == "user" and entry.get("content"))
+    a = entry.get("a") or (entry.get("role") == "assistant" and entry.get("content"))
+    if q and a:
+        with st.chat_message("user"):
+            st.markdown(q)
+        with st.chat_message("assistant"):
+            st.markdown(a)
 
-if prompt := st.chat_input("Type your message here..."):
-    if not S.cur:
-        S.cur = str(uuid.uuid4()); S.conversations[S.cur] = {"title":"New Chat","messages":[]}
-    msgs.append({"role":"user","content":prompt}); S.conversations[S.cur]["messages"] = msgs
-    with st.chat_message("user"): st.markdown(prompt)
-    with st.chat_message("assistant"):
-        try:
-            if client is None:
-                st.error("No valid client available. Check token and model status.")
-            else:
-                sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
-                
-                # Try text_generation
-                resp = client.text_generation(
-                    prompt_text,
-                    temperature=0.7,
-                    max_new_tokens=1000,
-                    stream=True
+query = st.chat_input("Type your message here...", key=f"query_{st.session_state.active_chat_id}")
+
+if query:
+    active_chat = _get_active_chat()
+    insertion_idx = len(active_chat["messages"])
+    active_chat["messages"].append({"q": query, "a": ""})
+    save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
+
+    with st.chat_message("user"):
+        st.markdown(query)
+
+    with st.spinner("🤖 Generating answer..."):
+        if client is None:
+            st.error("No valid client available. Check token and model status.")
+        else:
+            system = {
+                "Low": "Reasoning: low",
+                "Medium": "Reasoning: medium",
+                "High": "Reasoning: high"
+            }[st.session_state.reasoning_level]
+            messages = [
+                {"role": "system", "content": f"You are a helpful assistant. {system}"},
+                {"role": "user", "content": query},
+            ]
+
+            try:
+                chat_resp = client.chat_completion(
+                    messages=messages,
+                    max_tokens=2048,
+                    temperature=0.2,
+                    stream=False,
                 )
-                out, box = "", st.empty()
-                for token in resp:
-                    out += token
-                    box.markdown(out+"▌")
-                box.markdown(out)
-                msgs.append({"role":"assistant","content":out})
-                if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
-                S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
-        except Exception as e:
-            st.error(f"Generation failed: {str(e)}. Check model endpoint status or try again later.")
+                answer = _extract_assistant_text(chat_resp)
+            except Exception as e:
+                with st.chat_message("assistant"):
+                    st.error(f"Chat completion failed: {str(e)}. Falling back to text generation.")
+                try:
+                    prompt_text = f"System: You are a helpful assistant. {system}\nUser: {query}\nAssistant:"
+                    resp = client.text_generation(
+                        prompt_text,
+                        max_new_tokens=2048,
+                        temperature=0.2,
+                        do_sample=False,
+                    )
+                    if isinstance(resp, str) and resp.strip():
+                        answer = resp.strip()
+                    else:
+                        answer = "Failed to generate response."
+                except Exception:
+                    answer = "Fallback generation failed."
 
-with st.container():
-    st.markdown('<div id="clear-chat">', unsafe_allow_html=True)
-    if S.cur and st.button("🗑️ Clear Current Chat", use_container_width=True):
-        S.conversations[S.cur]["messages"] = []; _save(S.conversations); st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+            with st.chat_message("assistant"):
+                st.markdown(answer)
+            active_chat["messages"][insertion_idx] = {"q": query, "a": answer}
+            save_persisted_state(st.session_state.chats, st.session_state.active_chat_id)
