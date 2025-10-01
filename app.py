@@ -27,20 +27,6 @@ def _extract_assistant_text(chat_resp) -> str:
     except Exception:
         return ""
 
-def pick_working_model(token: str, candidates):
-    """
-    Return the first model that is deployed on HF Serverless Inference API.
-    If none work, return gpt2.
-    """
-    probe = InferenceClient(token=token)
-    for mid in candidates:
-        try:
-            status = probe.get_model_status(mid)  # checks deployment
-            return mid
-        except Exception:
-            continue
-    return "openai-community/gpt2"  # fallback always works
-
 # -----------------------------
 # Streamlit setup
 # -----------------------------
@@ -69,13 +55,12 @@ if not HF_TOKEN:
     st.warning("⚠️ Set HF_TOKEN in your environment (Hugging Face access token).")
     st.stop()
 
-# Candidate models (try in order)
+# Candidate models (all support HF Inference API)
 MODEL_CANDIDATES = [
-    "HuggingFaceTB/SmolLM3-3B",
-    "HuggingFaceTB/SmolLM2-1.7B-Instruct",
+    "TinyLlama/TinyLlama-1.1B-Chat-v0.1",
+    "HuggingFaceTB/SmolLM2-1.7B-Instruct"
 ]
-
-SELECTED_MODEL = pick_working_model(HF_TOKEN, MODEL_CANDIDATES)
+SELECTED_MODEL = MODEL_CANDIDATES[0]  # pick first as default
 
 # UI header
 st.markdown(f"""
@@ -170,7 +155,7 @@ if prompt := st.chat_input("Type your message here..."):
                 # Try chat
                 chat_resp = client.chat_completion(
                     messages=messages,
-                    max_tokens=800,
+                    max_tokens=500,
                     temperature=0.7,
                     stream=False
                 )
@@ -186,7 +171,7 @@ if prompt := st.chat_input("Type your message here..."):
                 answer = client.text_generation(
                     prompt_text,
                     temperature=0.7,
-                    max_new_tokens=800,
+                    max_new_tokens=500,
                     stream=False
                 )
 
