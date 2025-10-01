@@ -224,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 Qwen 2.5 Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 DialoGPT Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -293,8 +293,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 Qwen 2.5 Chat</h1>
-    <p>Conversational AI powered by Qwen 2.5 7B Instruct</p>
+    <h1>🤖 DialoGPT Chat</h1>
+    <p>Conversational AI powered by Microsoft DialoGPT</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("Qwen/Qwen2.5-0.5B-Instruct", token=S.hf)
+        client = InferenceClient("microsoft/DialoGPT-medium", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
