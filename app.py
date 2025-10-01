@@ -323,12 +323,22 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=True)
+                # Format messages into a single prompt
+                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                for msg in msgs:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    prompt_text += f"{role}: {msg['content']}\n"
+                prompt_text += "Assistant:"
+                
+                resp = client.text_generation(
+                    prompt_text,
+                    temperature=0.7,
+                    max_new_tokens=1000,
+                    stream=True
+                )
                 out, box = "", st.empty()
-                for ch in resp:
-                    t = getattr(getattr(ch.choices[0],"delta",object()),"content",None)
-                    if t is None and hasattr(ch,"generated_text"): out = ch.generated_text
-                    elif t: out += t
+                for token in resp:
+                    out += token
                     box.markdown(out+"▌")
                 box.markdown(out); msgs.append({"role":"assistant","content":out})
                 if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
