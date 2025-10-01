@@ -323,27 +323,32 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("No valid client available. Check token and model status.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                # Build the initial prompt with conversation history
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
+                # Use chat_completion API like the working RAG app
+                messages = [{"role":"system","content":f"You are a helpful assistant. {sys}"}] + msgs
                 
-                # Use text_generation directly
-                resp = client.text_generation(
-                    prompt_text,
+                resp = client.chat_completion(
+                    messages=messages,
+                    max_tokens=1000,
                     temperature=0.7,
-                    max_new_tokens=1000,
-                    stream=True
+                    stream=False
                 )
-                out, box = "", st.empty()
-                for token in resp:
-                    out += token
-                    box.markdown(out + "▌")
-                box.markdown(out)
                 
-                msgs.append({"role":"assistant","content":out})
+                # Extract answer
+                answer = ""
+                try:
+                    choice = resp.choices[0]
+                    msg = choice.message
+                    if isinstance(msg, dict):
+                        answer = msg.get("content") or msg.get("reasoning_content") or ""
+                    else:
+                        answer = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None) or ""
+                except Exception:
+                    answer = str(resp)
+                
+                box = st.empty()
+                box.markdown(answer)
+                
+                msgs.append({"role":"assistant","content":answer})
                 if len(msgs) == 2: 
                     S.conversations[S.cur]["title"] = msgs[0]["content"][:30] + ("..." if len(msgs[0]["content"]) > 30 else "")
                 S.conversations[S.cur]["messages"] = msgs
