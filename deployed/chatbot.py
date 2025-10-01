@@ -336,10 +336,10 @@ if prompt := st.chat_input("Type your message here..."):
                     max_new_tokens=1000,
                     stream=True
                 )
-            out, box = "", st.empty()
+                out, box = "", st.empty()
                 for token in resp:
                     out += token
-                box.markdown(out+"▌")
+                    box.markdown(out+"▌")
             box.markdown(out); msgs.append({"role":"assistant","content":out})
             if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
             S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
