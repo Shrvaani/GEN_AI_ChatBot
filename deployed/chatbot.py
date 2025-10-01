@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 
 load_dotenv()
-st.set_page_config(page_title="Mistral 7B Chat", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Zephyr 7B Chat", page_icon="🤖", layout="wide")
 
 # Fallback: try to read HF token from a local api.txt if present (never committed)
 def _fallback_read_hf_token():
@@ -224,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 Mistral 7B Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 Zephyr 7B Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -293,8 +293,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 Mistral 7B Chat</h1>
-    <p>Conversational AI powered by Mistral 7B Instruct</p>
+    <h1>🤖 Zephyr 7B Chat</h1>
+    <p>Conversational AI powered by Zephyr 7B Beta</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=S.hf)
+        client = InferenceClient("HuggingFaceH4/zephyr-7b-beta", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
@@ -336,11 +336,11 @@ if prompt := st.chat_input("Type your message here..."):
                     max_new_tokens=1000,
                     stream=True
                 )
-                out, box = "", st.empty()
+            out, box = "", st.empty()
                 for token in resp:
                     out += token
-                    box.markdown(out+"▌")
-                box.markdown(out); msgs.append({"role":"assistant","content":out})
+                box.markdown(out+"▌")
+            box.markdown(out); msgs.append({"role":"assistant","content":out})
             if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
             S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
