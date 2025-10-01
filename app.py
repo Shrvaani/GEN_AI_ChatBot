@@ -4,7 +4,9 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 import uuid
-from huggingface_hub import InferenceClient, HTTPError
+from huggingface_hub import InferenceClient
+from requests.exceptions import HTTPError
+
 
 # -----------------------------
 # Helpers
