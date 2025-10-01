@@ -8,69 +8,28 @@ from huggingface_hub import InferenceClient
 from requests.exceptions import HTTPError
 
 # -----------------------------
-# Helpers
-# -----------------------------
-def _extract_assistant_text(chat_resp) -> str:
-    try:
-        choice = chat_resp.choices[0]
-        msg = choice.message
-        if isinstance(msg, dict):
-            content = msg.get("content") or msg.get("reasoning_content")
-        else:
-            content = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None)
-        if content and isinstance(content, str):
-            return content.strip()
-    except Exception:
-        pass
-    try:
-        return str(chat_resp).strip()
-    except Exception:
-        return ""
-
-# -----------------------------
-# Streamlit setup
+# Setup
 # -----------------------------
 load_dotenv()
-st.set_page_config(page_title="HF Chat (Serverless)", page_icon="🤖", layout="wide")
-
-CSS = """
-<style>
-:root { --background-color:#ffffff; --text-color:#262730; --card-background:#f8f9fa; --border-color:#e9ecef; }
-.stApp[data-theme="dark"] { --background-color:#0e1117; --text-color:#fafafa; --card-background:#262730; --border-color:#464646; }
-.main-header { background: linear-gradient(90deg, #667eea, #764ba2); padding: 1.5rem 2rem; border-radius: 10px; margin-bottom: 1.5rem; color: white; text-align: center; }
-.main-header h1 { margin: 0; font-size: 2rem; font-weight: 600; }
-.stButton > button { background: linear-gradient(90deg, #667eea, #764ba2); color: white; border: none; border-radius: 25px; padding: .5rem 1.5rem; font-weight: bold; transition: .3s; }
-.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,.2); }
-[data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
-.stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:8px 0!important}
-.stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:8px 0!important}
-.stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:10px 14px!important;border-radius:16px 16px 4px 16px!important;max-width:62%!important;margin-left:auto!important}
-.stChatMessage[data-testid="assistant-message"] .stMarkdown{background:var(--card-background)!important;color:var(--text-color)!important;padding:10px 14px!important;border-radius:16px 16px 16px 4px!important;max-width:62%!important;margin-right:auto!important;border:1px solid var(--border-color)!important}
-</style>
-"""
-st.markdown(CSS, unsafe_allow_html=True)
+st.set_page_config(page_title="T5-Small Chat", page_icon="🤖", layout="wide")
 
 HF_TOKEN = os.getenv("HF_TOKEN", "")
+MODEL_ID = "google-t5/t5-small"   # ✅ works with hf-inference
+
 if not HF_TOKEN:
-    st.warning("⚠️ Set HF_TOKEN in your environment (Hugging Face access token).")
+    st.warning("⚠️ Please set HF_TOKEN in Streamlit secrets or .env file.")
     st.stop()
 
-# Candidate models (all support HF Inference API)
-MODEL_CANDIDATES = [
-    "TinyLlama/TinyLlama-1.1B-Chat-v0.1",
-    "HuggingFaceTB/SmolLM2-1.7B-Instruct"
-]
-SELECTED_MODEL = MODEL_CANDIDATES[0]  # pick first as default
+# Init Hugging Face client
+try:
+    client = InferenceClient(MODEL_ID, token=HF_TOKEN)
+except Exception as e:
+    st.error(f"Could not init InferenceClient: {e}")
+    st.stop()
 
-# UI header
-st.markdown(f"""
-<div class="main-header">
-  <h1>🤖 HF Chat (Serverless)</h1>
-  <p>Model: <code>{SELECTED_MODEL}</code></p>
-</div>
-""", unsafe_allow_html=True)
-
+# -----------------------------
 # Persistence
+# -----------------------------
 PERSIST_FILE = Path("conversations.json")
 
 def _load():
@@ -89,9 +48,11 @@ S = st.session_state
 if "conversations" not in S: S.conversations = _load()
 if "cur" not in S: S.cur = next(iter(S.conversations), None)
 
+# -----------------------------
+# Sidebar: Chat list
+# -----------------------------
 with st.sidebar:
-    st.title("📂 Chats")
-    level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1)
+    st.title("📂 Conversations")
 
     if st.button("➕ New Chat", use_container_width=True):
         i = str(uuid.uuid4())
@@ -100,41 +61,54 @@ with st.sidebar:
         _save(S.conversations)
         st.rerun()
 
-    st.markdown("### Conversations")
+    st.markdown("### History")
     if not S.conversations:
-        st.info("No conversations yet. Start a new chat!")
+        st.info("No chats yet. Start a new one!")
 
     for i, c in list(S.conversations.items()):
         if st.button(c.get("title","New Chat"), key=f"sel_{i}", use_container_width=True):
             S.cur = i
             st.rerun()
-        col_left, col_right = st.columns(2)
-        with col_left:
+
+        col1, col2 = st.columns(2)
+        with col1:
             if st.button("Rename", key=f"ren_{i}", use_container_width=True):
                 S.rename_id = i
                 S.rename_value = c.get("title","New Chat")
-        with col_right:
+        with col2:
             if st.button("Delete", key=f"del_{i}", use_container_width=True):
                 S.conversations.pop(i, None)
                 S.cur = next(iter(S.conversations), None)
                 _save(S.conversations)
                 st.rerun()
 
-# Create client
-try:
-    client = InferenceClient(SELECTED_MODEL, token=HF_TOKEN)
-except Exception as e:
-    st.error(f"Failed to init InferenceClient: {e}")
-    st.stop()
+        if getattr(S,"rename_id",None) == i:
+            new_title = st.text_input("Rename", value=S.rename_value, key=f"ren_input_{i}")
+            if st.button("Save", key=f"save_{i}"):
+                S.conversations[i]["title"] = new_title or "New Chat"
+                _save(S.conversations)
+                S.rename_id = None
+                st.rerun()
 
-# Render history
+# -----------------------------
+# Header
+# -----------------------------
+st.markdown(f"""
+<div style="background: linear-gradient(90deg, #667eea, #764ba2); padding: 1rem; border-radius: 8px; margin-bottom: 1.2rem; color: white; text-align:center;">
+  <h1>🤖 T5-Small Chat</h1>
+  <p>Powered by {MODEL_ID} on HF Inference API</p>
+</div>
+""", unsafe_allow_html=True)
+
+# -----------------------------
+# Main Chat UI
+# -----------------------------
 msgs = S.conversations.get(S.cur, {}).get("messages", []) if S.cur else []
 for m in msgs:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# Chat input
-if prompt := st.chat_input("Type your message here..."):
+if prompt := st.chat_input("Type your message..."):
     if not S.cur:
         S.cur = str(uuid.uuid4())
         S.conversations[S.cur] = {"title":"New Chat","messages":[]}
@@ -147,38 +121,16 @@ if prompt := st.chat_input("Type your message here..."):
 
     with st.chat_message("assistant"):
         try:
-            sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-            messages = [{"role":"system","content":f"You are a helpful assistant. {sys}"}] + msgs
-
-            answer = ""
-            try:
-                # Try chat
-                chat_resp = client.chat_completion(
-                    messages=messages,
-                    max_tokens=500,
-                    temperature=0.7,
-                    stream=False
-                )
-                answer = _extract_assistant_text(chat_resp)
-            except Exception:
-                # Fallback to text generation
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
-
-                answer = client.text_generation(
-                    prompt_text,
-                    temperature=0.7,
-                    max_new_tokens=500,
-                    stream=False
-                )
+            # Call T5 via text-to-text
+            result = client.text_to_text(prompt, max_new_tokens=200)
+            answer = result.strip() if isinstance(result, str) else str(result)
 
             st.markdown(answer)
             msgs.append({"role":"assistant","content":answer})
-            if len(msgs)==2:
+
+            if len(msgs)==2:  # auto-title chat
                 S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
+
             S.conversations[S.cur]["messages"] = msgs
             _save(S.conversations)
 
@@ -187,7 +139,9 @@ if prompt := st.chat_input("Type your message here..."):
         except Exception as e:
             st.error(str(e))
 
+# -----------------------------
 # Clear chat
+# -----------------------------
 if S.cur and st.button("🗑️ Clear Current Chat", use_container_width=True):
     S.conversations[S.cur]["messages"] = []
     _save(S.conversations)
