@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("google/gemma-2b-it", token=S.hf)
+        client = InferenceClient("microsoft/Phi-3-mini-4k-instruct", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
