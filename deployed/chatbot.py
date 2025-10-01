@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=S.hf)
+        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
@@ -323,7 +323,7 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                # Format messages as a single prompt
+                # Format messages into a single prompt
                 prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
                 for msg in msgs:
                     role = "User" if msg["role"] == "user" else "Assistant"
@@ -336,11 +336,11 @@ if prompt := st.chat_input("Type your message here..."):
                     max_new_tokens=1000,
                     stream=True
                 )
-            out, box = "", st.empty()
+                out, box = "", st.empty()
                 for token in resp:
                     out += token
-                box.markdown(out+"▌")
-            box.markdown(out); msgs.append({"role":"assistant","content":out})
+                    box.markdown(out+"▌")
+                box.markdown(out); msgs.append({"role":"assistant","content":out})
             if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
             S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
