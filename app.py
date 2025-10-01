@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 
 load_dotenv()
-st.set_page_config(page_title="GPT-OSS-20B Chat", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Zephyr-7B Chat", page_icon="🤖", layout="wide")
 
 # Fallback: try to read HF token from a local api.txt if present (never committed)
 def _fallback_read_hf_token():
@@ -23,7 +23,6 @@ def _fallback_read_hf_token():
 
 CSS = """
 <style>
-    /* [Your existing CSS here - unchanged] */
     /* CSS Variables for theme support */
     :root {
         --background-color: #ffffff;
@@ -225,7 +224,7 @@ if "confirm_delete_id" not in S: S.confirm_delete_id = None
 VERSION = "ui-rename-delete+token-ctrl v4"
 
 with st.sidebar:
-    st.markdown('<div><h3>🤖 GPT-OSS-20B Chat</h3></div>', unsafe_allow_html=True)
+    st.markdown('<div><h3>🤖 Zephyr-7B Chat</h3></div>', unsafe_allow_html=True)
     level = st.selectbox("Reasoning Level", ["Low","Medium","High"], index=1, help="Select the reasoning complexity for responses.")
     if not S.hf:
         token_input = st.text_input("HF Token", value=S.hf, type="password", help="Paste your Hugging Face Inference token.")
@@ -294,8 +293,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="main-header">
-    <h1>🤖 GPT-OSS-20B Chat</h1>
-    <p>Conversational AI powered by open-source 20B model</p>
+    <h1>🤖 Zephyr-7B Chat</h1>
+    <p>Conversational AI powered by Zephyr-7B model</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -304,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
+        client = InferenceClient("HuggingFaceH4/zephyr-7b-beta", token=S.hf)
     except Exception as e:
         st.warning(f"Primary model unavailable ({str(e)}). Falling back to microsoft/DialoGPT-medium")
         try:
@@ -329,13 +328,13 @@ if prompt := st.chat_input("Type your message here..."):
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
                 # Build the initial prompt with conversation history
-                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                prompt_text = f"<|system|>You are a helpful assistant. {sys}</|system|>\n\n"
                 for msg in msgs:
-                    role = "User" if msg["role"] == "user" else "Assistant"
-                    prompt_text += f"{role}: {msg['content']}\n"
-                prompt_text += "Assistant:"
+                    role = "<|user|>" if msg["role"] == "user" else "<|assistant|>"
+                    prompt_text += f"{role}{msg['content']}</{role}>\n"
+                prompt_text += "<|assistant|>"
                 
-                # Use text_generation directly (no chat_completion attempt)
+                # Use text_generation directly
                 resp = client.text_generation(
                     prompt_text,
                     temperature=0.7,
