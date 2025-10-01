@@ -23,6 +23,7 @@ def _fallback_read_hf_token():
 
 CSS = """
 <style>
+    /* [Your existing CSS here - unchanged] */
     /* CSS Variables for theme support */
     :root {
         --background-color: #ffffff;
@@ -327,49 +328,33 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("No valid client available. Check token and model status.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                messages = [{"role":"system","content":f"You are a helpful assistant. {sys}"}] + msgs
+                # Build the initial prompt with conversation history
+                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                for msg in msgs:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    prompt_text += f"{role}: {msg['content']}\n"
+                prompt_text += "Assistant:"
                 
-                # Try chat_completion first
-                try:
-                    resp = client.chat_completion(
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=1000,
-                        stream=True
-                    )
-                    out, box = "", st.empty()
-                    for ch in resp:
-                        t = getattr(getattr(ch.choices[0],"delta",object()),"content",None)
-                        if t is None and hasattr(ch,"generated_text"): out = ch.generated_text
-                        elif t: out += t
-                        box.markdown(out+"▌")
-                    box.markdown(out)
-                except Exception as chat_err:
-                    st.warning(f"Chat completion failed ({str(chat_err)}). Falling back to text generation.")
-                    # Fallback to text_generation
-                    prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
-                    for msg in msgs:
-                        role = "User" if msg["role"] == "user" else "Assistant"
-                        prompt_text += f"{role}: {msg['content']}\n"
-                    prompt_text += "Assistant:"
-                    
-                    resp = client.text_generation(
-                        prompt_text,
-                        temperature=0.7,
-                        max_new_tokens=1000,
-                        stream=True
-                    )
-                    out, box = "", st.empty()
-                    for token in resp:
-                        out += token
-                        box.markdown(out + "▌")
-                    box.markdown(out)
+                # Use text_generation directly (no chat_completion attempt)
+                resp = client.text_generation(
+                    prompt_text,
+                    temperature=0.7,
+                    max_new_tokens=1000,
+                    stream=True
+                )
+                out, box = "", st.empty()
+                for token in resp:
+                    out += token
+                    box.markdown(out + "▌")
+                box.markdown(out)
                 
                 msgs.append({"role":"assistant","content":out})
-                if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
-                S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
-        except Exception as e: 
-            st.error(str(e))
+                if len(msgs) == 2: 
+                    S.conversations[S.cur]["title"] = msgs[0]["content"][:30] + ("..." if len(msgs[0]["content"]) > 30 else "")
+                S.conversations[S.cur]["messages"] = msgs
+                _save(S.conversations)
+        except Exception as e:
+            st.error(f"Generation failed: {str(e)}. Check model endpoint status or try again later. Request ID: {getattr(e, 'request_id', 'N/A')}")
 
 with st.container():
     st.markdown('<div id="clear-chat">', unsafe_allow_html=True)
