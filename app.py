@@ -246,14 +246,30 @@ if prompt := st.chat_input("Type your message here..."):
             sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
             messages = [{"role":"system","content":f"You are a helpful assistant. {sys}"}] + msgs
             
-            chat_resp = client.chat_completion(
-                messages=messages,
-                max_tokens=1000,
-                temperature=0.7,
-                stream=False
-            )
+            # Try chat_completion first, fallback to text_generation
+            answer = ""
+            try:
+                chat_resp = client.chat_completion(
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7,
+                    stream=False
+                )
+                answer = _extract_assistant_text(chat_resp)
+            except AttributeError:
+                # Fallback: use text_generation for older API
+                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                for msg in msgs:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    prompt_text += f"{role}: {msg['content']}\n"
+                prompt_text += "Assistant:"
+                answer = client.text_generation(
+                    prompt_text,
+                    temperature=0.7,
+                    max_new_tokens=1000,
+                    stream=False
+                )
             
-            answer = _extract_assistant_text(chat_resp)
             st.markdown(answer)
             
             msgs.append({"role":"assistant","content":answer})
