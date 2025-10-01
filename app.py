@@ -6,23 +6,11 @@ from dotenv import load_dotenv
 import uuid
 from huggingface_hub import InferenceClient
 
-# Helper to safely extract assistant text from HF chat response
-def _extract_assistant_text(chat_resp) -> str:
-    try:
-        choice = chat_resp.choices[0]
-        msg = choice.message
-        if isinstance(msg, dict):
-            content = msg.get("content") or msg.get("reasoning_content")
-        else:
-            content = getattr(msg, "content", None) or getattr(msg, "reasoning_content", None)
-        if content and isinstance(content, str):
-            return content.strip()
-    except Exception:
-        pass
-    try:
-        return str(chat_resp).strip()
-    except Exception:
-        return ""
+# Helper to safely extract assistant text from HF text generation response
+def _extract_assistant_text(text_resp) -> str:
+    if isinstance(text_resp, str) and text_resp.strip():
+        return text_resp.strip()
+    return ""
 
 # --- Streamlit Setup ---
 load_dotenv()
@@ -302,36 +290,33 @@ if query:
                 "Medium": "Reasoning: medium",
                 "High": "Reasoning: high"
             }[st.session_state.reasoning_level]
-            messages = [
-                {"role": "system", "content": f"You are a helpful assistant. {system}"},
-                {"role": "user", "content": query},
-            ]
+            # Build prompt with conversation history
+            prompt_text = f"System: You are a helpful assistant. {system}\n"
+            for entry in active_chat["messages"]:
+                q = entry.get("q", "")
+                a = entry.get("a", "")
+                if q:
+                    prompt_text += f"User: {q}\n"
+                if a:
+                    prompt_text += f"Assistant: {a}\n"
+            prompt_text += "Assistant:"
 
             try:
-                chat_resp = client.chat_completion(
-                    messages=messages,
-                    max_tokens=2048,
+                resp = client.text_generation(
+                    prompt_text,
+                    max_new_tokens=2048,
                     temperature=0.2,
-                    stream=False,
+                    stream=True
                 )
-                answer = _extract_assistant_text(chat_resp)
+                out, box = "", st.empty()
+                for token in resp:
+                    out += token
+                    box.markdown(out + "▌")
+                box.markdown(out)
+                answer = out
             except Exception as e:
-                with st.chat_message("assistant"):
-                    st.error(f"Chat completion failed: {str(e)}. Falling back to text generation.")
-                try:
-                    prompt_text = f"System: You are a helpful assistant. {system}\nUser: {query}\nAssistant:"
-                    resp = client.text_generation(
-                        prompt_text,
-                        max_new_tokens=2048,
-                        temperature=0.2,
-                        do_sample=False,
-                    )
-                    if isinstance(resp, str) and resp.strip():
-                        answer = resp.strip()
-                    else:
-                        answer = "Failed to generate response."
-                except Exception:
-                    answer = "Fallback generation failed."
+                st.error(f"Generation failed: {str(e)}. Check model endpoint status or try again later.")
+                answer = "Failed to generate response."
 
             with st.chat_message("assistant"):
                 st.markdown(answer)
