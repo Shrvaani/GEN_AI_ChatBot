@@ -323,21 +323,24 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                resp = client.chat.completions.create(
-                    model="openai/gpt-oss-20b",
-                    messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs,
+                # Format messages as a single prompt
+                prompt_text = f"System: You are a helpful assistant. {sys}\n\n"
+                for msg in msgs:
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    prompt_text += f"{role}: {msg['content']}\n"
+                prompt_text += "Assistant:"
+                
+                resp = client.text_generation(
+                    prompt_text,
                     temperature=0.7,
-                    max_tokens=1000,
+                    max_new_tokens=1000,
                     stream=True
                 )
-                out, box = "", st.empty()
-                for ch in resp:
-                    if hasattr(ch, 'choices') and len(ch.choices) > 0:
-                        delta = ch.choices[0].delta
-                        if hasattr(delta, 'content') and delta.content:
-                            out += delta.content
-                    box.markdown(out+"▌")
-                box.markdown(out); msgs.append({"role":"assistant","content":out})
+            out, box = "", st.empty()
+                for token in resp:
+                    out += token
+                box.markdown(out+"▌")
+            box.markdown(out); msgs.append({"role":"assistant","content":out})
             if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
             S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
