@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("microsoft/Phi-3-mini-4k-instruct", token=S.hf)
+        client = InferenceClient("Qwen/Qwen2.5-0.5B-Instruct", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
