@@ -303,7 +303,7 @@ if not S.hf:
     client = None
 else:
     try:
-        client = InferenceClient("openai/gpt-oss-20b", token=S.hf)
+        client = InferenceClient("meta-llama/Llama-3.2-3B-Instruct", token=S.hf)
     except Exception as e:
         client = None
         st.error(str(e))
