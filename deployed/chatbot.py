@@ -180,14 +180,14 @@ CSS = """
     .stApp[data-theme="dark"] .stText { color: var(--text-color) !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="success"] { background-color: #22543d !important; color: #9ae6b4 !important; border: 1px solid #38a169 !important; }
     .stApp[data-theme="dark"] .stAlert[data-baseweb="notification"][data-severity="error"] { background-color: #742a2a !important; color: #feb2b2 !important; border: 1px solid #e53e3e !important; }
-    
+
     /* Chat bubbles */
     [data-testid="chatAvatarIcon-user"],[data-testid="chatAvatarIcon-assistant"]{display:none!important}
     .stChatMessage[data-testid="user-message"]{display:flex!important;flex-direction:row-reverse!important;justify-content:flex-end!important;margin:4px 0!important}
     .stChatMessage[data-testid="assistant-message"]{display:flex!important;flex-direction:row!important;justify-content:flex-start!important;margin:4px 0!important}
     .stChatMessage[data-testid="user-message"] .stMarkdown{background:#667eea!important;color:#fff!important;padding:6px 10px!important;border-radius:10px 10px 3px 10px!important;max-width:65%!important;margin-left:auto!important}
     .stChatMessage[data-testid="assistant-message"] .stMarkdown{background:var(--card-background)!important;color:var(--text-color)!important;padding:6px 10px!important;border-radius:10px 10px 10px 3px!important;max-width:65%!important;margin-right:auto!important;border:1px solid var(--border-color)!important}
-    
+
     /* Chat input */
     .stChatInput{background:var(--background-color)!important}
     .stChatInput>div{background:var(--background-color)!important;border:1px solid var(--border-color)!important;border-radius:8px;padding:3px}
@@ -323,16 +323,23 @@ if prompt := st.chat_input("Type your message here..."):
                 st.error("HF_TOKEN missing or invalid. Add it in the sidebar and try again.")
             else:
                 sys = {"Low":"Reasoning: low","Medium":"Reasoning: medium","High":"Reasoning: high"}[level]
-                resp = client.chat_completion(messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs, temperature=0.7, max_tokens=1000, stream=True)
-                out, box = "", st.empty()
-                for ch in resp:
-                    t = getattr(getattr(ch.choices[0],"delta",object()),"content",None)
-                    if t is None and hasattr(ch,"generated_text"): out = ch.generated_text
-                    elif t: out += t
-                    box.markdown(out+"▌")
-                box.markdown(out); msgs.append({"role":"assistant","content":out})
-                if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
-                S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
+                resp = client.chat.completions.create(
+                    model="openai/gpt-oss-20b",
+                    messages=[{"role":"system","content":f"You are a helpful assistant. {sys}"}]+msgs,
+                    temperature=0.7,
+                    max_tokens=1000,
+                    stream=True
+                )
+            out, box = "", st.empty()
+            for ch in resp:
+                    if hasattr(ch, 'choices') and len(ch.choices) > 0:
+                        delta = ch.choices[0].delta
+                        if hasattr(delta, 'content') and delta.content:
+                            out += delta.content
+                box.markdown(out+"▌")
+            box.markdown(out); msgs.append({"role":"assistant","content":out})
+            if len(msgs)==2: S.conversations[S.cur]["title"] = msgs[0]["content"][:30]+("..." if len(msgs[0]["content"])>30 else "")
+            S.conversations[S.cur]["messages"] = msgs; _save(S.conversations)
         except Exception as e: st.error(str(e))
 
 with st.container():
